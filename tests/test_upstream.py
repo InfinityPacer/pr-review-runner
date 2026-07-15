@@ -84,9 +84,12 @@ review:
 
 def test_describe_ask_and_passthrough_keep_independent_model_routes(monkeypatch) -> None:
     models: list[tuple[str, str]] = []
+    description_instructions: list[str] = []
 
     def fake_run(command, check, env):
         models.append((env["config.model"], env["config.reasoning_effort"]))
+        if env.get("github_action_config.auto_describe") == "true":
+            description_instructions.append(env["pr_description.extra_instructions"])
 
     monkeypatch.setattr("pr_review_runner.upstream.subprocess.run", fake_run)
     current = settings()
@@ -98,6 +101,13 @@ def test_describe_ask_and_passthrough_keep_independent_model_routes(monkeypatch)
         ("gpt-5.6-terra", "medium"),
         ("gpt-5.6-terra", "high"),
         ("gpt-5.6-sol", "xhigh"),
+    ]
+    assert description_instructions == [
+        "Your response MUST be written in the language corresponding to locale code: 'en-US'. This is crucial.\n"
+        "Summarize the change goal, key implementation details, compatibility impact, tests, and\n"
+        "notable risks.\n"
+        "Use 2-4 bullets for small pull requests and 4-8 bullets for larger changes.\n"
+        "Avoid file lists and local command transcripts."
     ]
 
 

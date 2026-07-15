@@ -42,8 +42,8 @@ Use [LOW] for localized actionable defects with limited impact. Do not use a sev
 Do not report style preferences, comments, refactors, architecture alternatives, speculative races, extra hardening,
 optional tests, or hypothetical concerns.
 Return no findings when the evidence is incomplete."""
-DESCRIPTION_INSTRUCTIONS = """Match the configured response language.
-Summarize the change goal, key implementation details, compatibility impact, tests, and notable risks.
+DESCRIPTION_INSTRUCTIONS = """Summarize the change goal, key implementation details, compatibility impact, tests, and
+notable risks.
 Use 2-4 bullets for small pull requests and 4-8 bullets for larger changes.
 Avoid file lists and local command transcripts."""
 
@@ -128,7 +128,10 @@ def run_upstream(command: str, settings: Settings, route: ModelRoute, language: 
                     "pr_description.add_original_user_description": "true",
                     "pr_description.use_description_markers": "true",
                     "pr_description.final_update_message": "false",
-                    "pr_description.extra_instructions": DESCRIPTION_INSTRUCTIONS,
+                    "pr_description.extra_instructions": (
+                        "Your response MUST be written in the language corresponding to locale code: "
+                        f"'{language}'. This is crucial.\n{DESCRIPTION_INSTRUCTIONS}"
+                    ),
                 }
             )
         elif command == "review":
