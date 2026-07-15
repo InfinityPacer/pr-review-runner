@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pr-review-runner"
+version = "0.0.1"
+description = "Publish AI-assisted pull request analysis as native GitHub Reviews."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "InfinityPacer" }]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8.3,<9", "ruff>=0.9,<1"]
+
+[project.scripts]
+pr-review-runner = "pr_review_runner.main:cli"
+
+[tool.setuptools.packages.find]
+include = ["pr_review_runner*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
