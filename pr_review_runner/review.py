@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import re
-from urllib.parse import quote
 
 PRIORITY_BADGES = {
     "high": "https://www.gstatic.com/codereviewagent/high-priority.svg",
@@ -57,6 +56,32 @@ def priority_badge(priority: str) -> str:
     """Return priority badge Markdown for a classified finding."""
     url = PRIORITY_BADGES.get(priority)
     return f"![{priority}]({url})" if url else ""
+
+
+def _fallback_summary(findings: list[dict], language: str, has_visible_inline_comment: bool) -> str:
+    """Keep publication useful when the model omits only its summary field."""
+    normalized_language = language.lower().replace("_", "-")
+    chinese = normalized_language.startswith("zh")
+    english = normalized_language.startswith("en")
+    if not chinese and not english:
+        raise RuntimeError(f"review analysis omitted review_summary for configured locale {language}")
+    if findings:
+        if has_visible_inline_comment and chinese:
+            return "已完成本次代码审查，发现的问题及处理建议见行内评论。"
+        if has_visible_inline_comment:
+            return "The code review is complete. See the inline comments for the identified issues and recommendations."
+        if chinese:
+            return "已完成本次代码审查，但识别到的问题无法定位到可评论的变更行。"
+        return "The code review is complete, but the identified issues could not be attached to changed lines."
+    if chinese:
+        return "已完成本次代码审查，暂未发现需要提出的审查意见。"
+    return "The code review is complete. There are no review comments to provide."
+
+
+def _review_summary(review: dict, findings: list[dict], language: str, has_visible_inline_comment: bool) -> str:
+    """Prefer the model's overall assessment and retain a deterministic fallback."""
+    summary = " ".join(str(review.get("review_summary") or "").split())
+    return summary or _fallback_summary(findings, language, has_visible_inline_comment)
 
 
 def _fingerprint(path: str, line: int) -> str:
@@ -126,10 +151,13 @@ def render_review_payload(
 
     findings = _findings(review)
     new_comments: list[dict] = []
+    visible_finding_locations: set[tuple[str, int]] = set()
     for finding in findings:
         if finding["line"] not in changed_lines.get(finding["path"], set()):
             continue
-        if finding["fingerprint"] in fingerprints or (finding["path"], finding["line"]) in locations:
+        location = (finding["path"], finding["line"])
+        if finding["fingerprint"] in fingerprints or location in locations:
+            visible_finding_locations.add(location)
             continue
         body = [f"<!-- pr-agent-review:{finding['fingerprint']} -->"]
         badge = priority_badge(finding["priority"])
@@ -144,25 +172,14 @@ def render_review_payload(
                 "body": "\n".join(body),
             }
         )
+        locations.add(location)
+        visible_finding_locations.add(location)
 
     short_sha = head_sha[:7]
     commit_url = f"https://github.com/{repository}/commit/{head_sha}"
-    chinese = language == "zh-CN"
+    chinese = language.lower().replace("_", "-").startswith("zh")
     lines = [SUMMARY_MARKER, "## PR-Agent Code Review", ""]
-    if findings:
-        separator = "：" if chinese else ":"
-        for finding in findings:
-            location = f"{finding['path']}:{finding['line']}"
-            path = quote(finding["path"], safe="/")
-            code_url = f"https://github.com/{repository}/blob/{head_sha}/{path}#L{finding['line']}"
-            concise = " ".join(finding["content"].split())[:360]
-            badge = priority_badge(finding["priority"])
-            badge_prefix = f"{badge} " if badge else ""
-            lines.append(f"- {badge_prefix}[{location}]({code_url}){separator} **{finding['header']}** - {concise}")
-    elif chinese:
-        lines.append("本次变更无需提出审查意见，暂无其他反馈。")
-    else:
-        lines.append("There are no review comments for the current changes. I have no additional feedback to provide.")
+    lines.append(_review_summary(review, findings, language, bool(visible_finding_locations)))
     lines.extend(
         [
             "",

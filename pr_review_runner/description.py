@@ -17,8 +17,13 @@ UNFILLED_BLOCK = re.compile(
 )
 
 
-def response_language(pull: dict) -> tuple[str, str]:
-    """Select Chinese for CJK or sparse titles, otherwise English."""
+def response_language(pull: dict, configured: str = "") -> tuple[str, str]:
+    """Honor an explicit locale or infer Chinese and English from contributor text."""
+    configured = configured.strip()
+    if configured:
+        heading = "PR-Agent 摘要" if configured.lower().replace("_", "-").startswith("zh") else "PR-Agent Summary"
+        return configured, heading
+
     title = str(pull.get("title") or "")
     body = re.sub(
         r"<!-- pr-agent-summary:start -->.*?<!-- pr-agent-summary:end -->",
@@ -28,8 +33,10 @@ def response_language(pull: dict) -> tuple[str, str]:
     )
     text = f"{title}\n{body}"
     cjk_count = len(re.findall(r"[\u4e00-\u9fff]", text))
-    latin_words = len(re.findall(r"\b[A-Za-z][A-Za-z]{2,}\b", text))
-    return ("zh-CN", "PR-Agent 摘要") if cjk_count >= 4 or latin_words < 8 else ("en-US", "PR-Agent Summary")
+    has_japanese_or_korean = bool(re.search(r"[\u3040-\u30ff\uac00-\ud7af]", text))
+    if cjk_count >= 4 and not has_japanese_or_korean:
+        return "zh-CN", "PR-Agent 摘要"
+    return "en-US", "PR-Agent Summary"
 
 
 def prepare_body(body: str, heading: str, changed_files: int) -> str:

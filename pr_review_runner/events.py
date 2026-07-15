@@ -39,7 +39,7 @@ def route_event(event: dict, settings: Settings) -> Route | None:
     """Apply event, sender, command, and role gates before any model call."""
     if event.get("sender", {}).get("type") == "Bot":
         return None
-    if settings.event_name == "pull_request_target":
+    if settings.event_name in {"pull_request", "pull_request_target"}:
         if event.get("action") not in AUTOMATIC_ACTIONS:
             return None
         number = int(event.get("pull_request", {}).get("number") or event.get("number") or 0)

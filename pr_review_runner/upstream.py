@@ -7,16 +7,33 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from .config import ModelRoute, Settings
 
 UPSTREAM_RUNNER = "/app/pr_agent/servers/github_action_runner.py"
+UPSTREAM_REVIEW_PROMPTS = Path("/app/pr_agent/settings/pr_reviewer_prompts.toml")
+REVIEW_SCHEMA_ANCHOR = "class Review(BaseModel):\n"
+REVIEW_EXAMPLE_ANCHOR = "Example output:\n```yaml\nreview:\n"
+REVIEW_SUMMARY_FIELD = """    review_summary: str = Field(
+        description="A concise natural-language summary of what the pull request changes and the overall review "
+        "assessment. When findings exist, synthesize their severity, common behavioral impact, and overall risk. "
+        "Do not list file names or line numbers, repeat individual issue descriptions, or invent concerns when "
+        "key_issues_to_review is empty. When no findings exist, conclude naturally that there are no review comments."
+    )
+"""
+REVIEW_SUMMARY_EXAMPLE = """  review_summary: |
+    ...
+"""
 REVIEW_INSTRUCTIONS = """Return key_issues_to_review only for concrete behavior defects introduced by this pull request.
 Each finding must identify the affected behavior, a reachable trigger, and the existing contract or invariant it
 violates.
 Use issue_content to state the smallest correction boundary, not a code patch.
+Write review_summary as 1-3 natural sentences that summarize what the pull request changes and the overall review
+assessment. When findings exist, synthesize their risk and common themes without copying issue_content or listing file
+locations. When no findings exist, still summarize the change and conclude naturally that there are no review comments.
 Prefix every issue_header with exactly one severity token: [HIGH], [MEDIUM], or [LOW].
 Use [HIGH] for reachable data loss, security or authorization bypass, destructive side effects, or broad service
 failure.
@@ -29,6 +46,16 @@ DESCRIPTION_INSTRUCTIONS = """Match the configured response language.
 Summarize the change goal, key implementation details, compatibility impact, tests, and notable risks.
 Use 2-4 bullets for small pull requests and 4-8 bullets for larger changes.
 Avoid file lists and local command transcripts."""
+
+
+def _review_prompt_with_summary(path: Path = UPSTREAM_REVIEW_PROMPTS) -> str:
+    """Extend the pinned upstream review schema without adding another model call."""
+    with path.open("rb") as handle:
+        prompt = str(tomllib.load(handle)["pr_review_prompt"]["system"])
+    if prompt.count(REVIEW_SCHEMA_ANCHOR) != 1 or prompt.count(REVIEW_EXAMPLE_ANCHOR) != 1:
+        raise RuntimeError("Pinned PR-Agent review prompt no longer matches the summary extension anchors")
+    prompt = prompt.replace(REVIEW_SCHEMA_ANCHOR, REVIEW_SCHEMA_ANCHOR + REVIEW_SUMMARY_FIELD, 1)
+    return prompt.replace(REVIEW_EXAMPLE_ANCHOR, REVIEW_EXAMPLE_ANCHOR + REVIEW_SUMMARY_EXAMPLE, 1)
 
 
 def _common_environment(settings: Settings, route: ModelRoute, language: str, output_path: str) -> dict[str, str]:
@@ -108,6 +135,7 @@ def run_upstream(command: str, settings: Settings, route: ModelRoute, language: 
             environment.update(
                 {
                     "config.publish_output": "false",
+                    "pr_review_prompt.system": _review_prompt_with_summary(),
                     "github_action_config.auto_review": "true",
                     "github_action_config.push_commands": '["/review"]',
                     "github_action_config.enable_output": "true",

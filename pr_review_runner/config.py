@@ -73,6 +73,7 @@ class Settings:
     skip_label: str
     skip_title_pattern: str
     max_findings: int
+    response_language: str
 
     @classmethod
     def from_environment(cls, environment: dict[str, str] | None = None) -> Settings:
@@ -155,4 +156,5 @@ class Settings:
             skip_label=_first(env, "PRR_SKIP_LABEL", default="skip pr-agent").lower(),
             skip_title_pattern=_first(env, "PRR_SKIP_TITLE_PATTERN", default=r"^(?:\[Auto\]|Auto)"),
             max_findings=max_findings,
+            response_language=_first(env, "config.response_language"),
         )

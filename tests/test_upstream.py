@@ -3,7 +3,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from pr_review_runner.config import Settings
-from pr_review_runner.upstream import REVIEW_INSTRUCTIONS, is_supported_upstream_command, run_upstream
+from pr_review_runner.upstream import (
+    REVIEW_INSTRUCTIONS,
+    _review_prompt_with_summary,
+    is_supported_upstream_command,
+    run_upstream,
+)
 
 
 def settings() -> Settings:
@@ -33,6 +38,7 @@ def test_review_subprocess_receives_route_defaults_and_structured_output(monkeyp
         )
 
     monkeypatch.setattr("pr_review_runner.upstream.subprocess.run", fake_run)
+    monkeypatch.setattr("pr_review_runner.upstream._review_prompt_with_summary", lambda: "review prompt with summary")
     current = settings()
     outputs = run_upstream("review", current, current.automatic_review, "zh-CN")
 
@@ -48,7 +54,32 @@ def test_review_subprocess_receives_route_defaults_and_structured_output(monkeyp
     assert captured["GITHUB_EVENT_NAME"] == "pull_request_target"
     assert captured["GITHUB_EVENT_PATH"] == "/tmp/event.json"
     assert captured["config.publish_output"] == "false"
+    assert captured["pr_review_prompt.system"] == "review prompt with summary"
     assert captured["pr_reviewer.extra_instructions"] == REVIEW_INSTRUCTIONS
+
+
+def test_review_prompt_extends_schema_and_example(tmp_path) -> None:
+    prompt_file = tmp_path / "pr_reviewer_prompts.toml"
+    prompt_file.write_text(
+        '''[pr_review_prompt]
+system="""class Review(BaseModel):
+    key_issues_to_review: list
+
+Example output:
+```yaml
+review:
+  key_issues_to_review: []
+```
+"""
+''',
+        encoding="utf-8",
+    )
+
+    prompt = _review_prompt_with_summary(prompt_file)
+
+    assert prompt.count("review_summary: str = Field(") == 1
+    assert prompt.count("  review_summary: |") == 1
+    assert "key_issues_to_review: list" in prompt
 
 
 def test_describe_ask_and_passthrough_keep_independent_model_routes(monkeypatch) -> None:

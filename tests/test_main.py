@@ -36,6 +36,7 @@ def test_unowned_slash_command_passes_through_with_full_event(monkeypatch, tmp_p
             "GITHUB_EVENT_NAME": "issue_comment",
             "GITHUB_EVENT_PATH": str(event_path),
             "GITHUB_TOKEN": "github-token",
+            "config.response_language": "ja-JP",
         }
     )
     captured: list[tuple[str, object, str]] = []
@@ -49,7 +50,7 @@ def test_unowned_slash_command_passes_through_with_full_event(monkeypatch, tmp_p
 
     run(settings)
 
-    assert captured == [("improve", settings.passthrough, "en-US")]
+    assert captured == [("improve", settings.passthrough, "ja-JP")]
 
 
 def test_unknown_slash_command_is_rejected_before_github_or_upstream_calls(monkeypatch, tmp_path, capsys) -> None:

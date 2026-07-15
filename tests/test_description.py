@@ -20,6 +20,14 @@ def test_response_language_ignores_owned_summary() -> None:
 
     assert response_language(chinese) == ("zh-CN", "PR-Agent 摘要")
     assert response_language(english) == ("en-US", "PR-Agent Summary")
+    assert response_language({"title": "Fix crash", "body": ""}) == ("en-US", "PR-Agent Summary")
+
+
+def test_explicit_response_language_overrides_pull_text() -> None:
+    pull = {"title": "修复审查输出", "body": "补充中文说明。"}
+
+    assert response_language(pull, "ja-JP") == ("ja-JP", "PR-Agent Summary")
+    assert response_language({"title": "Fix crash"}, "zh-TW") == ("zh-TW", "PR-Agent 摘要")
 
 
 def test_prepare_and_cleanup_preserve_contributor_body() -> None:
