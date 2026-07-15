@@ -59,8 +59,6 @@ class Settings:
     event_name: str
     event_path: Path
     github_token: str
-    openai_key: str
-    openai_api_base: str
     describe: ModelRoute
     automatic_review: ModelRoute
     manual_review: ModelRoute
@@ -84,8 +82,6 @@ class Settings:
         event_name = _first(env, "GITHUB_EVENT_NAME")
         event_path = Path(_first(env, "GITHUB_EVENT_PATH"))
         github_token = _first(env, "GITHUB_TOKEN", "GH_TOKEN")
-        openai_key = _first(env, "OPENAI_KEY", "OPENAI.KEY")
-        openai_api_base = _first(env, "OPENAI_API_BASE", "OPENAI.API_BASE")
         missing = [
             name
             for name, value in (
@@ -93,8 +89,6 @@ class Settings:
                 ("GITHUB_EVENT_NAME", event_name),
                 ("GITHUB_EVENT_PATH", str(event_path)),
                 ("GITHUB_TOKEN", github_token),
-                ("OPENAI_KEY", openai_key),
-                ("OPENAI_API_BASE", openai_api_base),
             )
             if not value or value == "."
         ]
@@ -132,8 +126,6 @@ class Settings:
             event_name=event_name,
             event_path=event_path,
             github_token=github_token,
-            openai_key=openai_key,
-            openai_api_base=openai_api_base,
             describe=ModelRoute(
                 _first(env, "PRR_DESCRIBE_MODEL", default="gpt-5.6-terra"),
                 _first(env, "PRR_DESCRIBE_REASONING_EFFORT", default="medium"),

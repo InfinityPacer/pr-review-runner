@@ -9,6 +9,21 @@ from .config import Settings
 
 AUTOMATIC_ACTIONS = {"opened", "reopened", "ready_for_review", "review_requested", "synchronize"}
 COMMAND_PATTERN = re.compile(r"^/[a-z0-9_-]+(?=$|\s)", re.IGNORECASE)
+# Equivalent upstream spellings share runner ownership and command-denylist semantics.
+COMMAND_ALIASES = {
+    "/auto_review": "/review",
+    "/review_pr": "/review",
+    "/describe_pr": "/describe",
+    "/ask_question": "/ask",
+    "/improve_code": "/improve",
+    "/settings": "/config",
+}
+
+
+def canonical_command(command: str) -> str:
+    """Normalize one upstream command or alias to its policy identity."""
+    normalized = f"/{command.strip().lstrip('/').lower()}" if command.strip() else ""
+    return COMMAND_ALIASES.get(normalized, normalized)
 
 
 @dataclass(frozen=True)
@@ -39,8 +54,9 @@ def route_event(event: dict, settings: Settings) -> Route | None:
         return None
     body = str(comment.get("body") or "").strip()
     match = COMMAND_PATTERN.match(body)
-    command = match.group(0).lower() if match else ""
-    if command in settings.disabled_commands:
+    command = canonical_command(match.group(0)) if match else ""
+    disabled_commands = {canonical_command(item) for item in settings.disabled_commands}
+    if command in disabled_commands:
         return None
     number = int(issue.get("number") or 0)
     return Route(number, command, False) if command and number > 0 else None

@@ -11,8 +11,6 @@ def base_environment() -> dict[str, str]:
         "GITHUB_EVENT_NAME": "pull_request_target",
         "GITHUB_EVENT_PATH": "/tmp/event.json",
         "GITHUB_TOKEN": "github-token",
-        "OPENAI_KEY": "api-key",
-        "OPENAI_API_BASE": "https://example.test/v1",
     }
 
 
@@ -53,11 +51,11 @@ def test_model_routes_accept_independent_overrides() -> None:
     assert settings.disabled_commands == ("/improve", "/update_changelog")
 
 
-def test_invalid_scope_and_missing_secrets_fail_closed() -> None:
+def test_invalid_scope_and_missing_runtime_context_fail_closed() -> None:
     with pytest.raises(ValueError, match="PRR_AUTO_REVIEW_SCOPE"):
         Settings.from_environment(base_environment() | {"PRR_AUTO_REVIEW_SCOPE": "unknown"})
 
     environment = base_environment()
-    environment.pop("OPENAI_KEY")
-    with pytest.raises(ValueError, match="OPENAI_KEY"):
+    environment.pop("GITHUB_TOKEN")
+    with pytest.raises(ValueError, match="GITHUB_TOKEN"):
         Settings.from_environment(environment)

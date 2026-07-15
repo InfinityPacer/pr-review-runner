@@ -1,12 +1,12 @@
 # PR Review Runner
 
-PR Review Runner publishes AI-assisted pull request analysis as a native GitHub Review with a summary and line comments. It handles `/describe`, `/review`, and `/ask` directly and passes other PR-Agent slash commands through.
+PR Review Runner is a containerized GitHub Actions wrapper around [PR-Agent](https://github.com/qodo-ai/pr-agent). It publishes code-review results as a native GitHub Review with a summary, line comments, and priority badges.
 
-The runner is built on [PR-Agent](https://github.com/qodo-ai/pr-agent). Thanks to the PR-Agent project and its contributors. This project is independently maintained and is not affiliated with Qodo or GitHub.
+The project is independently maintained and is not affiliated with Qodo or GitHub. Thanks to the PR-Agent project and its contributors.
 
 ## Usage
 
-The workflow must use `pull_request_target` only without checking out or executing pull request code. The image reads pull request data through the GitHub API.
+Create a workflow such as `.github/workflows/pr-review.yml`:
 
 ```yaml
 name: PR Review
@@ -41,57 +41,76 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          OPENAI.API_BASE: ${{ secrets.OPENAI_API_BASE }}
 ```
 
-`GITHUB_TOKEN` is the short-lived token created by GitHub Actions. Do not create a personal token for the runner.
+`GITHUB_TOKEN` is the short-lived token created for the workflow run. A personal access token is not required.
+
+The workflow uses `pull_request_target` so base-repository secrets are available. Do not add a checkout step or execute pull-request code in this job. The runner reads pull-request data through the GitHub API.
+
+## Provider Configuration
+
+Provider settings pass directly to PR-Agent. Use PR-Agent's native environment variable names for credentials and endpoints.
+
+The workflow example uses `OPENAI_KEY` and an optional `OPENAI.API_BASE`. Other providers can supply their corresponding PR-Agent or LiteLLM variables instead. Override the model routes below when the provider does not expose the default model identifiers.
 
 ## Commands
 
-- `/describe` updates the owned PR summary block without replacing contributor text.
+The runner handles these commands directly:
+
+- `/describe` updates a runner-owned summary block in the pull-request body without replacing contributor text.
 - `/review` publishes a native `PR-Agent Code Review` summary and eligible line comments.
-- `/ask <question>` answers a question about the pull request.
+- `/ask <question>` asks PR-Agent about the pull request.
 
-Manual commands accept `created` and `edited` comments from `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, and `FIRST_TIME_CONTRIBUTOR` by default. Other PR-Agent commands such as `/improve` and `/update_changelog` pass through by default. Set `PRR_DISABLED_COMMANDS` to disable commands in a consuming workflow.
+Equivalent upstream aliases share the same wrapper behavior and command-denylist policy. All remaining commands registered by the bundled PR-Agent, including their arguments, are delegated to PR-Agent. This includes `/improve`, which is enabled by default. Unknown commands are ignored. Refer to the [PR-Agent tool documentation](https://github.com/qodo-ai/pr-agent/tree/main/docs/docs/tools) for delegated command behavior.
 
-Pull requests carrying the `skip pr-agent` label or a title beginning with `[Auto]` or `Auto` are skipped for every route.
+Manual commands accept `created` and `edited` comments from `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, and `FIRST_TIME_CONTRIBUTOR` by default. Use `PRR_ALLOWED_ASSOCIATIONS` to replace this list or `PRR_DISABLED_COMMANDS` to disable selected commands.
 
-## Configuration
+Pull requests with the `skip pr-agent` label or a title beginning with `[Auto]` or `Auto` are skipped for automatic and manual routes.
 
-All overrides are optional. Defaults preserve the validated model routes.
+## Wrapper Defaults
 
-| Variable | Default | Purpose |
+The wrapper adds independent model routes for the behavior it owns:
+
+| Route | Model | Reasoning effort |
 | --- | --- | --- |
-| `PRR_DESCRIBE_MODEL` | `gpt-5.6-terra` | Description model |
-| `PRR_DESCRIBE_REASONING_EFFORT` | `medium` | Description reasoning effort |
-| `PRR_AUTO_REVIEW_MODEL` | `gpt-5.6-sol` | Automatic Review model |
-| `PRR_AUTO_REVIEW_REASONING_EFFORT` | `xhigh` | Automatic Review reasoning effort |
-| `PRR_MANUAL_REVIEW_MODEL` | `gpt-5.6-sol` | Manual `/review` model |
-| `PRR_MANUAL_REVIEW_REASONING_EFFORT` | `xhigh` | Manual Review reasoning effort |
-| `PRR_ASK_MODEL` | `gpt-5.6-terra` | `/ask` model |
-| `PRR_ASK_REASONING_EFFORT` | `high` | `/ask` reasoning effort |
-| `PRR_PASSTHROUGH_MODEL` | `gpt-5.6-sol` | Other PR-Agent command model |
-| `PRR_PASSTHROUGH_REASONING_EFFORT` | `xhigh` | Other PR-Agent command reasoning effort |
-| `PRR_FALLBACK_MODELS` | `["gpt-5.5", "gpt-5.4"]` | JSON fallback model list |
-| `PRR_CUSTOM_MODEL_MAX_TOKENS` | `1050000` | Custom model context limit |
-| `PRR_AUTO_REVIEW_SCOPE` | `all` | `all`, `forks`, or `manual` |
-| `PRR_ALLOWED_ASSOCIATIONS` | See above | JSON manual-command role list |
-| `PRR_DISABLED_COMMANDS` | `[]` | JSON command denylist, for example `["/improve"]` |
-| `PRR_MAX_FINDINGS` | `4` | Maximum structured Review findings |
+| Description | `gpt-5.6-terra` | `medium` |
+| Automatic Review | `gpt-5.6-sol` | `xhigh` |
+| Manual `/review` | `gpt-5.6-sol` | `xhigh` |
+| `/ask` | `gpt-5.6-terra` | `high` |
+| Delegated commands | `gpt-5.6-sol` | `xhigh` |
 
-Set `PRR_AUTO_REVIEW_SCOPE: forks` when automatic processing should run only for fork pull requests. Manual commands remain available for same-repository pull requests.
+Fallback models are `gpt-5.5` followed by `gpt-5.4`, and the custom model context limit is `1050000`. Route defaults can be replaced with the corresponding `PRR_*_MODEL`, `PRR_*_REASONING_EFFORT`, `PRR_FALLBACK_MODELS`, and `PRR_CUSTOM_MODEL_MAX_TOKENS` variables.
+
+Automatic processing covers all pull requests by default. Set `PRR_AUTO_REVIEW_SCOPE` to `forks` to automate only fork pull requests, or to `manual` to keep only slash commands. Use `PRR_DISABLED_COMMANDS` for a JSON command denylist such as `["/improve"]`.
+
+All other provider and tool configuration follows PR-Agent. Refer to the [upstream documentation](https://github.com/qodo-ai/pr-agent/tree/main/docs/docs) for available settings.
 
 ## Review Output
 
-High, medium, and low findings use visible priority badges. A finding without a recognized classification remains visible without a badge. If no actionable issue is found, the runner publishes only a natural-language Review summary.
+Findings classified as high, medium, or low use visible priority badges. When no actionable issue is found, the runner publishes only a natural-language Review summary. It does not create a separate issue comment for the review summary.
 
-The publisher rejects stale analysis when the PR head changes, avoids repeating an identical Review for the same head, and avoids duplicating line comments at an existing location. It removes only historical issue comments carrying runner-owned markers.
+Analysis is discarded if the pull-request head changes before publication. Identical Reviews and line comments are not published twice for the same head.
 
-## Image Releases
+## Image Tags
 
-Image publication is manual and offers only `edge` and `release` modes. Edge mode builds `main` as the fixed `edge` tag for pre-release validation. Release mode requires the edge image version to match the local package version.
+- `edge` tracks the most recently published validation image.
+- The package version tag is an immutable release.
+- `latest` points to the same image digest as the current version tag.
 
-Release mode promotes that exact edge digest without rebuilding it. The resulting image tags are the current local package version and `latest`.
+Image publication is manual. A release promotes the validated `edge` digest to the package version and `latest` without rebuilding it.
+
+## Development
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/pip install -e '.[test]'
+.venv/bin/pytest
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+docker build --tag pr-review-runner:test .
+docker run --rm pr-review-runner:test --version
+```
 
 ## License
 

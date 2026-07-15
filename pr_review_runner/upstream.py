@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import subprocess
@@ -31,6 +32,7 @@ Avoid file lists and local command transcripts."""
 
 
 def _common_environment(settings: Settings, route: ModelRoute, language: str, output_path: str) -> dict[str, str]:
+    # Provider credentials and endpoints retain the exact names expected by PR-Agent.
     environment = dict(os.environ)
     environment.update(
         {
@@ -38,8 +40,6 @@ def _common_environment(settings: Settings, route: ModelRoute, language: str, ou
             "GITHUB_EVENT_NAME": settings.event_name,
             "GITHUB_EVENT_PATH": str(settings.event_path),
             "GITHUB_TOKEN": settings.github_token,
-            "OPENAI_KEY": settings.openai_key,
-            "OPENAI.API_BASE": settings.openai_api_base,
             "GITHUB_OUTPUT": output_path,
             "config.model": route.model,
             "config.fallback_models": json.dumps(settings.fallback_models),
@@ -56,6 +56,14 @@ def _common_environment(settings: Settings, route: ModelRoute, language: str, ou
         }
     )
     return environment
+
+
+def is_supported_upstream_command(command: str) -> bool:
+    """Check a passthrough command against the bundled PR-Agent registry."""
+    module = importlib.import_module("pr_agent.agent.pr_agent")
+    registered = getattr(module, "commands", ())
+    normalized = command.strip().lstrip("/").lower()
+    return normalized in {str(item).strip().lower() for item in registered}
 
 
 def _read_outputs(path: Path) -> dict[str, object]:

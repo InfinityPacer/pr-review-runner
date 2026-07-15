@@ -15,8 +15,6 @@ def settings(
         event_name=event_name,
         event_path=Path("event.json"),
         github_token="token",
-        openai_key="key",
-        openai_api_base="https://example.test/v1",
         describe=route,
         automatic_review=route,
         manual_review=route,
@@ -55,6 +53,15 @@ def test_manual_routes_allow_created_and_edited_commands() -> None:
     assert route_event(comment_event("/update_changelog"), settings()).command == "/update_changelog"
 
 
+def test_upstream_aliases_share_canonical_routes() -> None:
+    assert route_event(comment_event("/describe_pr"), settings()).command == "/describe"
+    assert route_event(comment_event("/review_pr"), settings()).command == "/review"
+    assert route_event(comment_event("/auto_review"), settings()).command == "/review"
+    assert route_event(comment_event("/ask_question why"), settings()).command == "/ask"
+    assert route_event(comment_event("/improve_code --extended"), settings()).command == "/improve"
+    assert route_event(comment_event("/settings"), settings()).command == "/config"
+
+
 def test_manual_routes_reject_unknown_roles_bots_and_disabled_commands() -> None:
     assert route_event(comment_event(association="NONE"), settings()) is None
     bot = comment_event()
@@ -62,6 +69,10 @@ def test_manual_routes_reject_unknown_roles_bots_and_disabled_commands() -> None
     assert route_event(bot, settings()) is None
     current = settings(disabled_commands=("/improve",))
     assert route_event(comment_event("/IMPROVE --extended"), current) is None
+    assert route_event(comment_event("/improve_code --extended"), current) is None
+    review_disabled = settings(disabled_commands=("/review",))
+    assert route_event(comment_event("/review_pr"), review_disabled) is None
+    assert route_event(comment_event("/auto_review"), review_disabled) is None
     assert route_event(comment_event("please /review"), settings()) is None
 
 

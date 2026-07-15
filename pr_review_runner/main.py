@@ -13,7 +13,7 @@ from .description import prepare_body, remove_unfilled_body, response_language
 from .events import Route, route_event, should_skip_pull
 from .github import GitHubApi
 from .review import legacy_summary_comment_ids, render_review_payload
-from .upstream import run_upstream
+from .upstream import is_supported_upstream_command, run_upstream
 
 
 def _load_event(path: Path) -> dict:
@@ -82,6 +82,11 @@ def run(settings: Settings) -> None:
     if route is None:
         print("Event does not match a supported PR review route; skipping.")
         return
+    if not route.automatic and route.command not in {"/describe", "/review", "/ask"}:
+        command = route.command.removeprefix("/")
+        if not is_supported_upstream_command(command):
+            print(f"Command /{command} is not supported by the bundled PR-Agent; skipping.")
+            return
     api = GitHubApi(settings.github_token, os.environ.get("GITHUB_API_URL", "https://api.github.com"))
     pull = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")
     if should_skip_pull(pull, settings, route):
