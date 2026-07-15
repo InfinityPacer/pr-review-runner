@@ -2,13 +2,13 @@
 
 ## Boundary
 
-The source repository owns GitHub event routing, PR policy, model-route defaults, description-marker ownership, structured Review rendering, and image publication. PR-Agent owns diff analysis, description generation, and question answering.
+The source repository owns GitHub event routing, PR policy, model-route defaults, description-marker ownership, structured Review rendering, and image publication. PR-Agent owns model-provider configuration, diff analysis, description generation, and question answering. Provider environment variables pass through unchanged under their PR-Agent-native names.
 
 The runtime never checks out or executes pull request code. `pull_request_target` supplies base-repository secrets, so all PR content is treated as untrusted data and is read only through the GitHub API.
 
 ## Runtime Flow
 
-1. Validate the GitHub event, sender, manual role, slash command, and configured command denylist.
+1. Validate the GitHub event, sender, manual role, slash command, configured command denylist, and bundled PR-Agent command registry.
 2. Read the current PR and apply label, title, and automatic-scope policies.
 3. Run each PR-Agent command in a fresh subprocess so model and publishing settings cannot leak between routes. Commands without runner-owned output handling pass through to PR-Agent.
 4. For Review, disable upstream publication and capture its structured result.

@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from pr_review_runner.config import Settings
-from pr_review_runner.upstream import REVIEW_INSTRUCTIONS, run_upstream
+from pr_review_runner.upstream import REVIEW_INSTRUCTIONS, is_supported_upstream_command, run_upstream
 
 
 def settings() -> Settings:
@@ -12,14 +13,15 @@ def settings() -> Settings:
             "GITHUB_EVENT_NAME": "pull_request_target",
             "GITHUB_EVENT_PATH": "/tmp/event.json",
             "GITHUB_TOKEN": "github-token",
-            "OPENAI_KEY": "api-key",
-            "OPENAI_API_BASE": "https://example.test/v1",
         }
     )
 
 
 def test_review_subprocess_receives_route_defaults_and_structured_output(monkeypatch) -> None:
     captured: dict[str, str] = {}
+    monkeypatch.setenv("ANTHROPIC.KEY", "provider-key")
+    monkeypatch.setenv("OLLAMA.API_BASE", "https://provider.example.test")
+    monkeypatch.setenv("CUSTOM_PROVIDER_OPTION", "provider-option")
 
     def fake_run(command, check, env):
         assert check is True
@@ -39,7 +41,9 @@ def test_review_subprocess_receives_route_defaults_and_structured_output(monkeyp
     assert captured["config.reasoning_effort"] == "xhigh"
     assert captured["config.custom_model_max_tokens"] == "1050000"
     assert json.loads(captured["config.fallback_models"]) == ["gpt-5.5", "gpt-5.4"]
-    assert captured["OPENAI.API_BASE"] == "https://example.test/v1"
+    assert captured["ANTHROPIC.KEY"] == "provider-key"
+    assert captured["OLLAMA.API_BASE"] == "https://provider.example.test"
+    assert captured["CUSTOM_PROVIDER_OPTION"] == "provider-option"
     assert captured["GITHUB_REPOSITORY"] == "owner/repo"
     assert captured["GITHUB_EVENT_NAME"] == "pull_request_target"
     assert captured["GITHUB_EVENT_PATH"] == "/tmp/event.json"
@@ -64,3 +68,12 @@ def test_describe_ask_and_passthrough_keep_independent_model_routes(monkeypatch)
         ("gpt-5.6-terra", "high"),
         ("gpt-5.6-sol", "xhigh"),
     ]
+
+
+def test_upstream_command_validation_uses_bundled_registry(monkeypatch) -> None:
+    module = SimpleNamespace(commands=("review", "improve", "update_changelog"))
+    monkeypatch.setattr("pr_review_runner.upstream.importlib.import_module", lambda name: module)
+
+    assert is_supported_upstream_command("improve")
+    assert is_supported_upstream_command("UPDATE_CHANGELOG")
+    assert not is_supported_upstream_command("reflect")
