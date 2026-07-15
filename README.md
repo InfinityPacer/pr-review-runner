@@ -27,12 +27,13 @@ jobs:
     if: >-
       github.event.sender.type != 'Bot' &&
       (
+        github.event_name == 'pull_request' ||
         github.event_name == 'pull_request_target' ||
         github.event.issue.pull_request != null
       )
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -47,6 +48,8 @@ jobs:
 `GITHUB_TOKEN` is the short-lived token created for the workflow run. A personal access token is not required.
 
 The workflow uses `pull_request_target` so base-repository secrets are available. Do not add a checkout step or execute pull-request code in this job. The runner reads pull-request data through the GitHub API.
+
+The runner also accepts `pull_request` when a repository intentionally uses that event. Fork pull requests do not normally receive repository secrets or a write-capable `GITHUB_TOKEN` on `pull_request`, so they cannot usually authenticate the model provider or publish a Review. Choose one pull-request event for automatic processing to avoid duplicate Reviews.
 
 ## Provider Configuration
 
@@ -86,9 +89,11 @@ Automatic processing covers all pull requests by default. Set `PRR_AUTO_REVIEW_S
 
 All other provider and tool configuration follows PR-Agent. Refer to the [upstream documentation](https://github.com/qodo-ai/pr-agent/tree/main/docs/docs) for available settings.
 
+Set PR-Agent's native `config.response_language` environment variable to keep model-generated content from every command in a fixed locale. When it is omitted, the runner selects `zh-CN` for clearly Chinese pull-request titles or descriptions and otherwise uses `en-US`. The programming language of changed files is not used for this decision.
+
 ## Review Output
 
-Findings classified as high, medium, or low use visible priority badges. When no actionable issue is found, the runner publishes only a natural-language Review summary. It does not create a separate issue comment for the review summary.
+Findings classified as high, medium, or low use visible priority badges on their line comments. The Review body contains a natural-language assessment instead of copying the line comments. When no actionable issue is found, the same assessment summarizes the change and concludes naturally that there is no additional feedback. It does not create a separate issue comment for the review summary.
 
 Analysis is discarded if the pull-request head changes before publication. Identical Reviews and line comments are not published twice for the same head.
 

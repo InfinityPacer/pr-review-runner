@@ -92,7 +92,7 @@ def run(settings: Settings) -> None:
     if should_skip_pull(pull, settings, route):
         print("Pull request matches the configured skip policy; skipping.")
         return
-    language, heading = response_language(pull)
+    language, heading = response_language(pull, settings.response_language)
     if route.automatic:
         _run_description(api, settings, route, pull, language, heading)
         refreshed = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")

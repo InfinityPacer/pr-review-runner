@@ -25,6 +25,7 @@ def test_model_routes_default_to_production_policy() -> None:
     assert settings.fallback_models == ("gpt-5.5", "gpt-5.4")
     assert settings.custom_model_max_tokens == 1_050_000
     assert settings.disabled_commands == ()
+    assert settings.response_language == ""
 
 
 def test_model_routes_accept_independent_overrides() -> None:
@@ -37,6 +38,7 @@ def test_model_routes_accept_independent_overrides() -> None:
         "PRR_FALLBACK_MODELS": json.dumps(["fallback-a", "fallback-b"]),
         "PRR_CUSTOM_MODEL_MAX_TOKENS": "123456",
         "PRR_DISABLED_COMMANDS": json.dumps(["improve", "/UPDATE_CHANGELOG"]),
+        "config.response_language": "ja-JP",
     }
 
     settings = Settings.from_environment(environment)
@@ -49,6 +51,7 @@ def test_model_routes_accept_independent_overrides() -> None:
     assert settings.fallback_models == ("fallback-a", "fallback-b")
     assert settings.custom_model_max_tokens == 123456
     assert settings.disabled_commands == ("/improve", "/update_changelog")
+    assert settings.response_language == "ja-JP"
 
 
 def test_invalid_scope_and_missing_runtime_context_fail_closed() -> None:

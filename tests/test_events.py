@@ -29,6 +29,7 @@ def settings(
         skip_label="skip pr-agent",
         skip_title_pattern=r"^(?:\[Auto\]|Auto)",
         max_findings=4,
+        response_language="",
     )
 
 
@@ -78,11 +79,13 @@ def test_manual_routes_reject_unknown_roles_bots_and_disabled_commands() -> None
 
 def test_automatic_scope_can_limit_reviews_to_forks() -> None:
     event = {"action": "opened", "sender": {"type": "User"}, "pull_request": {"number": 7}}
-    route = route_event(event, settings("pull_request_target", "forks"))
+    for event_name in ("pull_request", "pull_request_target"):
+        current = settings(event_name, "forks")
+        route = route_event(event, current)
 
-    assert route is not None and route.automatic
-    assert not should_skip_pull(pull("contributor/fork"), settings("pull_request_target", "forks"), route)
-    assert should_skip_pull(pull("owner/repo"), settings("pull_request_target", "forks"), route)
+        assert route is not None and route.automatic
+        assert not should_skip_pull(pull("contributor/fork"), current, route)
+        assert should_skip_pull(pull("owner/repo"), current, route)
 
 
 def test_skip_rules_apply_to_automatic_and_manual_routes() -> None:
