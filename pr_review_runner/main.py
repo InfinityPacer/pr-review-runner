@@ -10,8 +10,9 @@ from pathlib import Path
 from . import __version__
 from .config import Settings
 from .description import prepare_body, remove_unfilled_body, response_language
+from .discussion import build_review_discussion
 from .events import Route, route_event, should_skip_pull
-from .github import GitHubApi
+from .github import GitHubApi, GitHubApiError
 from .review import legacy_summary_comment_ids, render_review_payload
 from .upstream import is_supported_upstream_command, run_upstream
 
@@ -47,7 +48,10 @@ def _run_description(api: GitHubApi, settings: Settings, route: Route, pull: dic
 def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, language: str) -> None:
     reviewed_head = str(pull.get("head", {}).get("sha") or "")
     model_route = settings.automatic_review if route.automatic else settings.manual_review
-    outputs = run_upstream("review", settings, model_route, language)
+    issue_comments = api.paginate(f"repos/{settings.repository}/issues/{route.pull_number}/comments?per_page=100")
+    review_comments = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/comments?per_page=100")
+    discussion = build_review_discussion(issue_comments, review_comments)
+    outputs = run_upstream("review", settings, model_route, language, discussion)
     review = outputs.get("review")
     changed_files = int(pull.get("changed_files") or 0)
     if not isinstance(review, dict):
@@ -62,7 +66,22 @@ def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, la
     files = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/files?per_page=100")
     comments = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/comments?per_page=100")
     reviews = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/reviews?per_page=100")
-    payload = render_review_payload(review, files, comments, reviews, settings.repository, reviewed_head, language)
+    try:
+        thread_resolutions = api.review_thread_resolutions(settings.repository, route.pull_number)
+    except GitHubApiError as error:
+        print(f"Unable to read review-thread resolution; preserving existing inline-comment deduplication: {error}")
+        thread_resolutions = {}
+    resolved_comment_ids = {comment_id for comment_id, resolved in thread_resolutions.items() if resolved}
+    payload = render_review_payload(
+        review,
+        files,
+        comments,
+        reviews,
+        settings.repository,
+        reviewed_head,
+        language,
+        resolved_comment_ids,
+    )
 
     latest = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")
     if str(latest.get("head", {}).get("sha") or "") != reviewed_head:
@@ -70,7 +89,6 @@ def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, la
         return
     if payload:
         api.post(f"repos/{settings.repository}/pulls/{route.pull_number}/reviews", payload)
-    issue_comments = api.paginate(f"repos/{settings.repository}/issues/{route.pull_number}/comments?per_page=100")
     for comment_id in legacy_summary_comment_ids(issue_comments):
         api.delete(f"repos/{settings.repository}/issues/comments/{comment_id}")
 

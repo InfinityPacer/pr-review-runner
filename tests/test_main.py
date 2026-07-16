@@ -1,7 +1,8 @@
 import json
 
 from pr_review_runner.config import Settings
-from pr_review_runner.main import run
+from pr_review_runner.events import Route
+from pr_review_runner.main import _run_review, run
 
 
 class PullApi:
@@ -133,3 +134,63 @@ def test_review_alias_uses_runner_owned_native_review_route(monkeypatch, tmp_pat
     assert captured[0][0] is settings
     assert captured[0][1].command == "/review"
     assert captured[0][2] == "en-US"
+
+
+def test_review_passes_current_pull_discussion_to_upstream(monkeypatch) -> None:
+    settings = Settings.from_environment(
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_EVENT_NAME": "pull_request_target",
+            "GITHUB_EVENT_PATH": "/tmp/event.json",
+            "GITHUB_TOKEN": "github-token",
+        }
+    )
+    pull = {"head": {"sha": "abcdef1234567890"}, "changed_files": 1}
+    captured: dict[str, str] = {}
+
+    class ReviewApi:
+        def get(self, path: str) -> dict:
+            assert path == "repos/owner/repo/pulls/7"
+            return pull
+
+        def paginate(self, path: str) -> list[dict]:
+            if path == "repos/owner/repo/issues/7/comments?per_page=100":
+                return [
+                    {
+                        "id": 1,
+                        "user": {"login": "maintainer", "type": "User"},
+                        "body": "The declared dependency is already included transitively.",
+                    }
+                ]
+            if path == "repos/owner/repo/pulls/7/comments?per_page=100":
+                return []
+            if path == "repos/owner/repo/pulls/7/files?per_page=100":
+                return []
+            if path == "repos/owner/repo/pulls/7/reviews?per_page=100":
+                return []
+            raise AssertionError(path)
+
+        def review_thread_resolutions(self, repository: str, number: int) -> dict[int, bool]:
+            assert (repository, number) == ("owner/repo", 7)
+            return {}
+
+        def post(self, path: str, payload: dict) -> None:
+            assert path == "repos/owner/repo/pulls/7/reviews"
+            assert payload["event"] == "COMMENT"
+
+        def delete(self, path: str) -> None:
+            raise AssertionError(path)
+
+    def fake_run_upstream(command, current, model_route, language, discussion):
+        assert command == "review"
+        assert current is settings
+        assert model_route is settings.manual_review
+        assert language == "zh-CN"
+        captured["discussion"] = discussion
+        return {"review": {"review_summary": "本次变更无需提出审查意见。"}}
+
+    monkeypatch.setattr("pr_review_runner.main.run_upstream", fake_run_upstream)
+
+    _run_review(ReviewApi(), settings, Route(7, "/review", False), pull, "zh-CN")
+
+    assert "The declared dependency is already included transitively." in captured["discussion"]

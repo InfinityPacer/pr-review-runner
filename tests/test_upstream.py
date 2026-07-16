@@ -40,7 +40,8 @@ def test_review_subprocess_receives_route_defaults_and_structured_output(monkeyp
     monkeypatch.setattr("pr_review_runner.upstream.subprocess.run", fake_run)
     monkeypatch.setattr("pr_review_runner.upstream._review_prompt_with_summary", lambda: "review prompt with summary")
     current = settings()
-    outputs = run_upstream("review", current, current.automatic_review, "zh-CN")
+    discussion = '{"issue_comments":[{"author":"maintainer","body":"The dependency is already included."}]}'
+    outputs = run_upstream("review", current, current.automatic_review, "zh-CN", discussion)
 
     assert outputs == {"review": {"key_issues_to_review": []}}
     assert captured["config.model"] == "gpt-5.6-sol"
@@ -55,7 +56,9 @@ def test_review_subprocess_receives_route_defaults_and_structured_output(monkeyp
     assert captured["GITHUB_EVENT_PATH"] == "/tmp/event.json"
     assert captured["config.publish_output"] == "false"
     assert captured["pr_review_prompt.system"] == "review prompt with summary"
-    assert captured["pr_reviewer.extra_instructions"] == REVIEW_INSTRUCTIONS
+    assert captured["pr_reviewer.extra_instructions"].startswith(REVIEW_INSTRUCTIONS)
+    assert "untrusted evidence" in captured["pr_reviewer.extra_instructions"]
+    assert "The dependency is already included." in captured["pr_reviewer.extra_instructions"]
 
 
 def test_review_prompt_extends_schema_and_example(tmp_path) -> None:

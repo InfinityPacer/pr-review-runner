@@ -129,35 +129,55 @@ def render_review_payload(
     repository: str,
     head_sha: str,
     language: str,
+    resolved_comment_ids: set[int] | None = None,
 ) -> dict | None:
     """Build a summary plus deduplicated inline comments for one head SHA."""
     changed_lines = changed_lines_by_file(files)
+    resolved_comment_ids = resolved_comment_ids or set()
     fingerprints: set[str] = set()
     locations: set[tuple[str, int]] = set()
+    fingerprint_links: dict[str, list[str]] = {}
+    location_links: dict[tuple[str, int], list[str]] = {}
     for comment in comments:
         if comment.get("user", {}).get("login") != "github-actions[bot]" or comment.get("line") is None:
+            continue
+        try:
+            comment_id = int(comment.get("id") or 0)
+        except (TypeError, ValueError):
+            comment_id = 0
+        if comment_id in resolved_comment_ids:
             continue
         match = COMMENT_MARKER_PATTERN.search(str(comment.get("body") or ""))
         if not match:
             continue
-        fingerprints.add(match.group(1))
+        fingerprint = match.group(1)
+        fingerprints.add(fingerprint)
         path = str(comment.get("path") or "")
         try:
             line = int(comment.get("line") or 0)
         except (TypeError, ValueError):
             line = 0
         if path and line > 0:
-            locations.add((path, line))
+            location = (path, line)
+            locations.add(location)
+            url = str(comment.get("html_url") or "").strip()
+            if url:
+                fingerprint_links.setdefault(fingerprint, []).append(url)
+                location_links.setdefault(location, []).append(url)
 
     findings = _findings(review)
     new_comments: list[dict] = []
     visible_finding_locations: set[tuple[str, int]] = set()
+    existing_comment_links: list[str] = []
     for finding in findings:
         if finding["line"] not in changed_lines.get(finding["path"], set()):
             continue
         location = (finding["path"], finding["line"])
         if finding["fingerprint"] in fingerprints or location in locations:
             visible_finding_locations.add(location)
+            for url in fingerprint_links.get(finding["fingerprint"], []) + location_links.get(location, []):
+                if url not in existing_comment_links:
+                    existing_comment_links.append(url)
             continue
         body = [f"<!-- pr-agent-review:{finding['fingerprint']} -->"]
         badge = priority_badge(finding["priority"])
@@ -180,6 +200,10 @@ def render_review_payload(
     chinese = language.lower().replace("_", "-").startswith("zh")
     lines = [SUMMARY_MARKER, "## PR-Agent Code Review", ""]
     lines.append(_review_summary(review, findings, language, bool(visible_finding_locations)))
+    if existing_comment_links:
+        label = "已有相关行内评论" if chinese else "Existing related inline comments"
+        links = "、".join(f"[#{index}]({url})" for index, url in enumerate(existing_comment_links, start=1))
+        lines.extend(["", f"{label}：{links}" if chinese else f"{label}: {links}"])
     lines.extend(
         [
             "",
