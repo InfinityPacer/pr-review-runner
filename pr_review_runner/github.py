@@ -68,3 +68,67 @@ class GitHubApi:
             match = re.search(r'<([^>]+)>; rel="next"', link)
             next_endpoint = match.group(1) if match else ""
         return items
+
+    def review_thread_resolutions(self, repository: str, pull_number: int) -> dict[int, bool]:
+        """Return each review thread root comment's resolved state."""
+        owner, separator, name = repository.partition("/")
+        if not separator or not owner or not name or "/" in name:
+            raise ValueError("repository must use owner/name format")
+        query = """
+query ReviewThreadResolutions($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $cursor) {
+        nodes {
+          isResolved
+          comments(first: 1) {
+            nodes { fullDatabaseId }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+        resolutions: dict[int, bool] = {}
+        cursor: str | None = None
+        while True:
+            response = self.post(
+                "graphql",
+                {
+                    "query": query,
+                    "variables": {
+                        "owner": owner,
+                        "name": name,
+                        "number": pull_number,
+                        "cursor": cursor,
+                    },
+                },
+            )
+            if not isinstance(response, dict):
+                raise GitHubApiError("GitHub GraphQL returned a non-object response")
+            if response.get("errors"):
+                details = "; ".join(str(error.get("message") or error) for error in response["errors"])
+                raise GitHubApiError(f"GitHub GraphQL reviewThreads failed: {details}")
+            try:
+                threads = response["data"]["repository"]["pullRequest"]["reviewThreads"]
+                nodes = threads["nodes"]
+                page_info = threads["pageInfo"]
+            except (KeyError, TypeError) as error:
+                raise GitHubApiError("GitHub GraphQL reviewThreads response was incomplete") from error
+            for thread in nodes or []:
+                root_nodes = (thread.get("comments") or {}).get("nodes") or []
+                if not root_nodes:
+                    continue
+                try:
+                    comment_id = int(root_nodes[0].get("fullDatabaseId") or 0)
+                except (TypeError, ValueError):
+                    comment_id = 0
+                if comment_id > 0:
+                    resolutions[comment_id] = thread.get("isResolved") is True
+            if not page_info.get("hasNextPage"):
+                return resolutions
+            cursor = page_info.get("endCursor")
+            if not isinstance(cursor, str) or not cursor:
+                raise GitHubApiError("GitHub GraphQL reviewThreads pagination omitted endCursor")

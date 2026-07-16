@@ -34,8 +34,18 @@ def render(
     comments: list[dict] | None = None,
     reviews: list[dict] | None = None,
     language: str = "zh-CN",
+    resolved_comment_ids: set[int] | None = None,
 ) -> dict | None:
-    return render_review_payload(review, files(), comments or [], reviews or [], "owner/repo", HEAD_SHA, language)
+    return render_review_payload(
+        review,
+        files(),
+        comments or [],
+        reviews or [],
+        "owner/repo",
+        HEAD_SHA,
+        language,
+        resolved_comment_ids or set(),
+    )
 
 
 def test_priority_badges_render_only_in_inline_comment() -> None:
@@ -101,16 +111,39 @@ def test_existing_location_deduplicates_inline_comment_but_keeps_summary() -> No
     first = render(finding())
     assert first is not None
     existing = {
+        "id": 101,
         "user": {"login": "github-actions[bot]"},
         "path": "fixtures/review_target.py",
         "line": 2,
         "body": first["comments"][0]["body"],
+        "html_url": "https://github.com/owner/repo/pull/7#discussion_r101",
     }
     second = render(finding(), comments=[existing])
 
     assert second is not None
     assert "comments" not in second
     assert "本次审查发现一个高风险问题" in second["body"]
+    assert "https://github.com/owner/repo/pull/7#discussion_r101" in second["body"]
+    assert "The added behavior violates the declared contract." not in second["body"]
+
+
+def test_resolved_thread_does_not_suppress_a_new_inline_comment() -> None:
+    first = render(finding())
+    assert first is not None
+    existing = {
+        "id": 101,
+        "user": {"login": "github-actions[bot]"},
+        "path": "fixtures/review_target.py",
+        "line": 2,
+        "body": first["comments"][0]["body"],
+        "html_url": "https://github.com/owner/repo/pull/7#discussion_r101",
+    }
+
+    second = render(finding(), comments=[existing], resolved_comment_ids={101})
+
+    assert second is not None
+    assert len(second["comments"]) == 1
+    assert "discussion_r101" not in second["body"]
 
 
 def test_missing_model_summary_falls_back_without_copying_inline_content() -> None:

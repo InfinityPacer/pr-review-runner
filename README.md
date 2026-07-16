@@ -95,7 +95,9 @@ Set PR-Agent's native `config.response_language` environment variable to keep mo
 
 Findings classified as high, medium, or low use visible priority badges on their line comments. The Review body contains a natural-language assessment instead of copying the line comments. When no actionable issue is found, the same assessment summarizes the change and concludes naturally that there is no additional feedback. It does not create a separate issue comment for the review summary.
 
-Analysis is discarded if the pull-request head changes before publication. Identical Reviews and line comments are not published twice for the same head.
+Before analysis, the runner includes a bounded selection of human-authored general pull-request comments and inline review threads in the model input. Slash-command comments and unrelated bot output are excluded; a bot-authored thread root is retained only when it is needed to understand a human reply. Discussion is treated as untrusted evidence, and the model is instructed to verify each claim against the current change and repository contracts.
+
+Analysis is discarded if the pull-request head changes before publication. Identical Reviews and unresolved line comments are not published twice for the same head. When a repeated finding is suppressed, the Review summary links the existing inline comment. A resolved thread can receive a new inline comment if the issue is found again.
 
 ## Image Tags
 

@@ -10,10 +10,11 @@ The runtime never checks out or executes pull request code. `pull_request_target
 
 1. Validate the GitHub event, sender, manual role, slash command, configured command denylist, and bundled PR-Agent command registry.
 2. Read the current PR and apply label, title, and automatic-scope policies.
-3. Run each PR-Agent command in a fresh subprocess so model and publishing settings cannot leak between routes. Commands without runner-owned output handling pass through to PR-Agent.
-4. For Review, disable upstream publication and capture its structured result.
-5. Recheck the head SHA, render one native Review, recheck the head again, then publish.
-6. Delete only legacy issue comments with explicit runner-owned markers.
+3. For Review, read a bounded selection of human pull-request discussion and pass it to the model as untrusted evidence that must be checked against the current code.
+4. Run each PR-Agent command in a fresh subprocess so model and publishing settings cannot leak between routes. Commands without runner-owned output handling pass through to PR-Agent.
+5. For Review, disable upstream publication and capture its structured result.
+6. Recheck the head SHA, render one native Review, recheck the head again, then publish. Unresolved thread roots suppress duplicate inline comments and produce links in the summary; resolved roots do not suppress new findings.
+7. Delete only legacy issue comments with explicit runner-owned markers.
 
 ## Release Flow
 
