@@ -92,7 +92,7 @@ def test_describe_ask_and_passthrough_keep_independent_model_routes(monkeypatch)
     def fake_run(command, check, env):
         models.append((env["config.model"], env["config.reasoning_effort"]))
         if env.get("github_action_config.auto_describe") == "true":
-            assert command[-1].endswith("description_runner.py")
+            assert command[-2:] == ["-m", "pr_review_runner.description_runner"]
             assert env["config.publish_output"] == "false"
             assert env["pr_description.add_original_user_description"] == "false"
             description_instructions.append(env["pr_description.extra_instructions"])
