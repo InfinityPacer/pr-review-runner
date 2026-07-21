@@ -1,3 +1,3 @@
 """PR review orchestration and native GitHub Review publication."""
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"

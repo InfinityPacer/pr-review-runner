@@ -92,11 +92,18 @@ def test_describe_ask_and_passthrough_keep_independent_model_routes(monkeypatch)
     def fake_run(command, check, env):
         models.append((env["config.model"], env["config.reasoning_effort"]))
         if env.get("github_action_config.auto_describe") == "true":
+            assert command[-1].endswith("description_runner.py")
+            assert env["config.publish_output"] == "false"
+            assert env["pr_description.add_original_user_description"] == "false"
             description_instructions.append(env["pr_description.extra_instructions"])
+            Path(env["GITHUB_OUTPUT"]).write_text(
+                f"description={json.dumps({'summary': 'Generated summary.'})}\n",
+                encoding="utf-8",
+            )
 
     monkeypatch.setattr("pr_review_runner.upstream.subprocess.run", fake_run)
     current = settings()
-    run_upstream("describe", current, current.describe, "en-US")
+    description = run_upstream("describe", current, current.describe, "en-US")
     run_upstream("ask", current, current.ask, "en-US")
     run_upstream("improve", current, current.passthrough, "en-US")
 
@@ -105,6 +112,7 @@ def test_describe_ask_and_passthrough_keep_independent_model_routes(monkeypatch)
         ("gpt-5.6-terra", "high"),
         ("gpt-5.6-sol", "xhigh"),
     ]
+    assert description == {"description": {"summary": "Generated summary."}}
     assert description_instructions == [
         "Your response MUST be written in the language corresponding to locale code: 'en-US'. This is crucial.\n"
         "Summarize the change goal, key implementation details, compatibility impact, tests, and\n"
