@@ -71,12 +71,16 @@ def test_generate_preserves_upstream_artifact_and_disables_publication(monkeypat
     monkeypatch.setitem(sys.modules, "pr_agent.git_providers.utils", provider_utils)
     monkeypatch.setitem(sys.modules, "pr_agent.tools", ModuleType("pr_agent.tools"))
     monkeypatch.setitem(sys.modules, "pr_agent.tools.pr_description", description_module)
+    monkeypatch.setenv("OPENAI_KEY", "openai-key")
+    monkeypatch.setenv("OPENAI_ORG", "openai-org")
     monkeypatch.setenv("GITHUB_TOKEN", "github-token")
 
     summary = asyncio.run(_generate("https://api.github.test/pulls/7"))
 
     assert summary == artifact
     assert calls == [
+        ("OPENAI.KEY", "openai-key"),
+        ("OPENAI.ORG", "openai-org"),
         ("GITHUB.USER_TOKEN", "github-token"),
         ("GITHUB.DEPLOYMENT_TYPE", "user"),
         ("repo", "https://api.github.test/pulls/7"),

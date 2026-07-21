@@ -32,6 +32,12 @@ async def _generate(pr_url: str) -> str:
     from pr_agent.tools.pr_description import PRDescription
 
     settings = get_settings()
+    openai_key = os.environ.get("OPENAI_KEY") or os.environ.get("OPENAI.KEY")
+    openai_org = os.environ.get("OPENAI_ORG") or os.environ.get("OPENAI.ORG")
+    if openai_key:
+        settings.set("OPENAI.KEY", openai_key)
+    if openai_org:
+        settings.set("OPENAI.ORG", openai_org)
     settings.set("GITHUB.USER_TOKEN", os.environ["GITHUB_TOKEN"])
     settings.set("GITHUB.DEPLOYMENT_TYPE", "user")
     apply_repo_settings(pr_url)
