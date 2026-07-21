@@ -1,10 +1,11 @@
+import pytest
+
 from pr_review_runner.description import (
     END_MARKER,
-    PLACEHOLDER,
     START_MARKER,
-    prepare_body,
-    remove_unfilled_body,
+    remove_summary,
     response_language,
+    update_summary,
 )
 
 
@@ -30,20 +31,36 @@ def test_explicit_response_language_overrides_pull_text() -> None:
     assert response_language({"title": "Fix crash"}, "zh-TW") == ("zh-TW", "PR-Agent 摘要")
 
 
-def test_prepare_and_cleanup_preserve_contributor_body() -> None:
+def test_update_and_remove_preserve_contributor_body() -> None:
     body = "Contributor context."
-    prepared = prepare_body(body, "PR-Agent Summary", 1)
+    updated = update_summary(body, "PR-Agent Summary", "Generated summary.")
 
-    assert prepared.startswith(body)
-    assert PLACEHOLDER in prepared
-    assert remove_unfilled_body(prepared) == body
+    assert updated.startswith(body)
+    assert "Generated summary." in updated
+    assert remove_summary(updated) == body
 
 
-def test_prepare_fails_safe_for_incomplete_markers() -> None:
+def test_update_fails_safe_for_incomplete_markers() -> None:
     body = f"Contributor context.\n\n{START_MARKER}\npartial"
-    assert prepare_body(body, "PR-Agent Summary", 1) == body
+    assert update_summary(body, "PR-Agent Summary", "Generated summary.") == body
 
 
-def test_zero_file_pr_removes_only_owned_block() -> None:
-    body = f"Contributor context.\n\n## PR-Agent Summary\n\n{PLACEHOLDER}\n"
-    assert prepare_body(body, "PR-Agent Summary", 0) == "Contributor context."
+def test_update_replaces_only_owned_block_and_normalizes_heading() -> None:
+    body = f"Contributor context.\n\n## PR-Agent Summary\n\n{START_MARKER}\nOld summary.\n{END_MARKER}\n"
+
+    updated = update_summary(body, "PR-Agent 摘要", "新摘要。")
+
+    assert updated.startswith("Contributor context.")
+    assert "## PR-Agent 摘要" in updated
+    assert "新摘要。" in updated
+    assert "Old summary." not in updated
+
+
+def test_update_preserves_backslashes_and_rejects_nested_markers() -> None:
+    body = f"Contributor context.\n\n## PR-Agent Summary\n\n{START_MARKER}\nOld summary.\n{END_MARKER}\n"
+
+    updated = update_summary(body, "PR-Agent Summary", r"Keep \1 and C:\\workspace literal.")
+
+    assert r"Keep \1 and C:\\workspace literal." in updated
+    with pytest.raises(ValueError, match="ownership markers"):
+        update_summary(body, "PR-Agent Summary", START_MARKER)

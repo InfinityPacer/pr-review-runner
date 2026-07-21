@@ -6,14 +6,9 @@ import re
 
 START_MARKER = "<!-- pr-agent-summary:start -->"
 END_MARKER = "<!-- pr-agent-summary:end -->"
-PLACEHOLDER = f"{START_MARKER}\npr_agent:summary\n{END_MARKER}"
 OWNED_BLOCK = re.compile(
     r"(?ims)^##\s+(?:PR-Agent\s+摘要|PR-Agent\s+Summary)\s*\n\s*"
     r"<!-- pr-agent-summary:start -->.*?<!-- pr-agent-summary:end -->\s*"
-)
-UNFILLED_BLOCK = re.compile(
-    r"(?ims)^##\s+(?:PR-Agent\s+摘要|PR-Agent\s+Summary)\s*\n\s*"
-    r"<!-- pr-agent-summary:start -->\s*pr_agent:summary\s*<!-- pr-agent-summary:end -->\s*"
 )
 
 
@@ -39,27 +34,18 @@ def response_language(pull: dict, configured: str = "") -> tuple[str, str]:
     return "en-US", "PR-Agent Summary"
 
 
-def prepare_body(body: str, heading: str, changed_files: int) -> str:
-    """Insert only the marker block owned by the description command."""
-    block = f"## {heading}\n\n{PLACEHOLDER}"
-    start_index = body.find(START_MARKER)
-    end_index = body.find(END_MARKER, start_index + len(START_MARKER)) if start_index >= 0 else -1
-    if changed_files == 0:
-        return OWNED_BLOCK.sub("", body).rstrip() if OWNED_BLOCK.search(body) else body
-    if start_index >= 0 and end_index >= 0:
-        normalized = re.sub(
-            r"(?im)^##\s+(PR-Agent\s+摘要|PR-Agent\s+Summary)\s*\n\s*(?=<!-- pr-agent-summary:start -->)",
-            f"## {heading}\n\n",
-            body,
-        )
-        start_index = normalized.find(START_MARKER)
-        end_index = normalized.find(END_MARKER, start_index + len(START_MARKER))
-        return normalized[:start_index] + PLACEHOLDER + normalized[end_index + len(END_MARKER) :]
-    if start_index >= 0 or END_MARKER in body:
+def update_summary(body: str, heading: str, summary: str) -> str:
+    """Replace only the complete Summary block owned by the runner."""
+    if START_MARKER in summary or END_MARKER in summary:
+        raise ValueError("generated Summary must not contain runner ownership markers")
+    block = f"## {heading}\n\n{START_MARKER}\n{summary.strip()}\n{END_MARKER}"
+    if OWNED_BLOCK.search(body):
+        return OWNED_BLOCK.sub(lambda _: f"{block}\n", body).rstrip() + "\n"
+    if START_MARKER in body or END_MARKER in body:
         return body
     return f"{body.rstrip()}\n\n{block}\n" if body.strip() else f"{block}\n"
 
 
-def remove_unfilled_body(body: str) -> str:
-    """Remove a placeholder left behind when description generation fails."""
-    return UNFILLED_BLOCK.sub("", body).rstrip() if PLACEHOLDER in body else body
+def remove_summary(body: str) -> str:
+    """Remove only a complete Summary block owned by the runner."""
+    return OWNED_BLOCK.sub("", body).rstrip() if OWNED_BLOCK.search(body) else body

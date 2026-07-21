@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import Settings
-from .description import prepare_body, remove_unfilled_body, response_language
+from .description import remove_summary, response_language, update_summary
 from .discussion import build_review_discussion
 from .events import Route, route_event, should_skip_pull
 from .github import GitHubApi, GitHubApiError
@@ -31,18 +31,29 @@ def _patch_body(api: GitHubApi, repository: str, number: int, current: str, upda
 
 
 def _run_description(api: GitHubApi, settings: Settings, route: Route, pull: dict, language: str, heading: str) -> None:
-    body = str(pull.get("body") or "")
-    prepared = prepare_body(body, heading, int(pull.get("changed_files") or 0))
-    _patch_body(api, settings.repository, route.pull_number, body, prepared)
-    if int(pull.get("changed_files") or 0) == 0:
+    original_body = str(pull.get("body") or "")
+    described_head = str(pull.get("head", {}).get("sha") or "")
+    changed_files = int(pull.get("changed_files") or 0)
+    outputs = run_upstream("describe", settings, settings.describe, language) if changed_files else {}
+
+    current = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")
+    if str(current.get("head", {}).get("sha") or "") != described_head:
+        print("PR head changed during description analysis; skipping stale Summary publication.")
         return
-    try:
-        run_upstream("describe", settings, settings.describe, language)
-    finally:
-        refreshed = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")
-        refreshed_body = str(refreshed.get("body") or "")
-        cleaned = remove_unfilled_body(refreshed_body)
-        _patch_body(api, settings.repository, route.pull_number, refreshed_body, cleaned)
+    current_body = str(current.get("body") or "")
+    if current_body != original_body:
+        print("PR description changed during analysis; skipping stale Summary publication.")
+        return
+
+    if changed_files:
+        description = outputs.get("description")
+        summary = description.get("summary") if isinstance(description, dict) else None
+        if not isinstance(summary, str) or not summary.strip():
+            raise RuntimeError("description analysis produced no structured Summary")
+        updated = update_summary(current_body, heading, summary)
+    else:
+        updated = remove_summary(current_body)
+    _patch_body(api, settings.repository, route.pull_number, current_body, updated)
 
 
 def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, language: str) -> None:

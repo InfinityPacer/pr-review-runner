@@ -14,6 +14,7 @@ from tempfile import NamedTemporaryFile
 from .config import ModelRoute, Settings
 
 UPSTREAM_RUNNER = "/app/pr_agent/servers/github_action_runner.py"
+DESCRIPTION_RUNNER = "/app/pr_review_runner/description_runner.py"
 UPSTREAM_REVIEW_PROMPTS = Path("/app/pr_agent/settings/pr_reviewer_prompts.toml")
 REVIEW_SCHEMA_ANCHOR = "class Review(BaseModel):\n"
 REVIEW_EXAMPLE_ANCHOR = "Example output:\n```yaml\nreview:\n"
@@ -128,6 +129,7 @@ def run_upstream(
         if command == "describe":
             environment.update(
                 {
+                    "config.publish_output": "false",
                     "github_action_config.auto_describe": "true",
                     "github_action_config.push_commands": '["/describe"]',
                     "pr_description.generate_ai_title": "false",
@@ -140,7 +142,7 @@ def run_upstream(
                     "pr_description.enable_help_comment": "false",
                     "pr_description.enable_semantic_files_types": "false",
                     "pr_description.collapsible_file_list": "adaptive",
-                    "pr_description.add_original_user_description": "true",
+                    "pr_description.add_original_user_description": "false",
                     "pr_description.use_description_markers": "true",
                     "pr_description.final_update_message": "false",
                     "pr_description.extra_instructions": (
@@ -175,7 +177,8 @@ def run_upstream(
                     "pr_reviewer.extra_instructions": review_instructions,
                 }
             )
-        subprocess.run([sys.executable, UPSTREAM_RUNNER], check=True, env=environment)
+        runner = DESCRIPTION_RUNNER if command == "describe" else UPSTREAM_RUNNER
+        subprocess.run([sys.executable, runner], check=True, env=environment)
         return _read_outputs(output_path)
     finally:
         output_path.unlink(missing_ok=True)

@@ -61,7 +61,7 @@ The workflow example uses `OPENAI_KEY` and an optional `OPENAI.API_BASE`. Other 
 
 The runner handles these commands directly:
 
-- `/describe` updates a runner-owned summary block in the pull-request body without replacing contributor text.
+- `/describe` updates a runner-owned summary block only when the pull-request body remains unchanged during analysis.
 - `/review` publishes a native `PR-Agent Code Review` summary and eligible line comments.
 - `/ask <question>` asks PR-Agent about the pull request.
 
