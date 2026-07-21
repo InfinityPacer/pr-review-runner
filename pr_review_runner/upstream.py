@@ -14,7 +14,7 @@ from tempfile import NamedTemporaryFile
 from .config import ModelRoute, Settings
 
 UPSTREAM_RUNNER = "/app/pr_agent/servers/github_action_runner.py"
-DESCRIPTION_RUNNER = "/app/pr_review_runner/description_runner.py"
+DESCRIPTION_MODULE = "pr_review_runner.description_runner"
 UPSTREAM_REVIEW_PROMPTS = Path("/app/pr_agent/settings/pr_reviewer_prompts.toml")
 REVIEW_SCHEMA_ANCHOR = "class Review(BaseModel):\n"
 REVIEW_EXAMPLE_ANCHOR = "Example output:\n```yaml\nreview:\n"
@@ -177,8 +177,10 @@ def run_upstream(
                     "pr_reviewer.extra_instructions": review_instructions,
                 }
             )
-        runner = DESCRIPTION_RUNNER if command == "describe" else UPSTREAM_RUNNER
-        subprocess.run([sys.executable, runner], check=True, env=environment)
+        runner = (
+            [sys.executable, "-m", DESCRIPTION_MODULE] if command == "describe" else [sys.executable, UPSTREAM_RUNNER]
+        )
+        subprocess.run(runner, check=True, env=environment)
         return _read_outputs(output_path)
     finally:
         output_path.unlink(missing_ok=True)
