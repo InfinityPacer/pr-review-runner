@@ -56,6 +56,13 @@ jobs:
         run: python -m ruff check . && python -m ruff format --check .
       - name: Build container
         run: docker build --tag pr-review-runner:test .
+      - name: Verify bundled PR-Agent file filtering
+        run: |
+          docker run --rm --entrypoint python pr-review-runner:test -c '
+          from pr_review_runner.main import _has_reviewable_files
+          assert not _has_reviewable_files([{"filename": "Cargo.lock"}, {"filename": "assets/logo.png"}])
+          assert _has_reviewable_files([{"filename": "Cargo.lock"}, {"filename": "src/main.rs"}])
+          '
       - name: Smoke-test entrypoint
         run: docker run --rm pr-review-runner:test --version
 
