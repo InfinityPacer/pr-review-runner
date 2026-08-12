@@ -30,6 +30,12 @@ def _patch_body(api: GitHubApi, repository: str, number: int, current: str, upda
         api.patch(f"repos/{repository}/pulls/{number}", {"body": updated})
 
 
+def _has_reviewable_files(files: list[dict]) -> bool:
+    from pr_agent.algo.language_handler import is_valid_file
+
+    return any(is_valid_file(str(file.get("filename") or "")) for file in files)
+
+
 def _run_description(api: GitHubApi, settings: Settings, route: Route, pull: dict, language: str, heading: str) -> None:
     original_body = str(pull.get("body") or "")
     described_head = str(pull.get("head", {}).get("sha") or "")
@@ -67,7 +73,11 @@ def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, la
     changed_files = int(pull.get("changed_files") or 0)
     if not isinstance(review, dict):
         if changed_files:
-            raise RuntimeError("review analysis produced no structured output for a non-empty pull request")
+            files = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/files?per_page=100")
+            if _has_reviewable_files(files):
+                raise RuntimeError("review analysis produced no structured output for a non-empty pull request")
+            print("Pull request contains no files supported by the bundled PR-Agent; skipping review publication.")
+            return
         review = {}
 
     current = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")
