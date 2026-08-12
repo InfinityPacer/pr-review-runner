@@ -1,0 +1,55 @@
+name: PR Review
+
+on:
+  pull_request_target:
+    # Fork reviews use target-repository credentials. This job must not check out or execute pull request code.
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - review_requested
+      - synchronize
+  issue_comment:
+    types:
+      - created
+      - edited
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    if: >-
+      github.event.sender.type != 'Bot' &&
+      (
+        (
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        ) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"]'), github.event.comment.author_association)
+        )
+      )
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Run PR Review
+        uses: docker://ghcr.io/infinitypacer/pr-review-runner:latest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          OPENAI.API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          PRR_AUTO_REVIEW_SCOPE: forks
+          PRR_ALLOWED_ASSOCIATIONS: '["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR"]'
+          PRR_DISABLED_COMMANDS: '["/improve"]'
+          PRR_SKIP_LABEL: skip pr-agent
+          PRR_SKIP_TITLE_PATTERN: '^(?:\[Auto\]|Auto)'
+          config.response_language: zh-CN
