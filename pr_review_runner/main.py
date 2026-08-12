@@ -80,7 +80,7 @@ def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, la
     if not isinstance(review, dict):
         if changed_files:
             files = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/files?per_page=100")
-            if _has_reviewable_files(files):
+            if len(files) != changed_files or _has_reviewable_files(files):
                 raise RuntimeError("review analysis produced no structured output for a non-empty pull request")
             print("Pull request contains no files supported by the bundled PR-Agent; skipping review publication.")
             return

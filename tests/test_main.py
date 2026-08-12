@@ -259,6 +259,36 @@ def test_review_rejects_missing_output_when_a_changed_file_is_reviewable(monkeyp
         _run_review(ReviewApi(), settings, Route(7, "/review", False), pull, "en-US")
 
 
+def test_review_rejects_missing_output_when_file_list_is_truncated(monkeypatch) -> None:
+    settings = Settings.from_environment(
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_EVENT_NAME": "pull_request_target",
+            "GITHUB_EVENT_PATH": "/tmp/event.json",
+            "GITHUB_TOKEN": "github-token",
+        }
+    )
+    pull = {"head": {"sha": "abcdef1234567890"}, "changed_files": 3001}
+
+    class ReviewApi:
+        def get(self, path: str) -> dict:
+            assert path == "repos/owner/repo/pulls/7"
+            return pull
+
+        def paginate(self, path: str) -> list[dict]:
+            if path.endswith("/issues/7/comments?per_page=100") or path.endswith("/pulls/7/comments?per_page=100"):
+                return []
+            if path.endswith("/pulls/7/files?per_page=100"):
+                return [{"filename": f"locks/package-{index}.lock"} for index in range(3000)]
+            raise AssertionError(path)
+
+    monkeypatch.setattr("pr_review_runner.main.run_upstream", lambda *_: {})
+    monkeypatch.setattr("pr_review_runner.main._has_reviewable_files", lambda files: False)
+
+    with pytest.raises(RuntimeError, match="no structured output"):
+        _run_review(ReviewApi(), settings, Route(7, "/review", False), pull, "en-US")
+
+
 def test_review_skips_stale_empty_output_before_reading_files(monkeypatch, capsys) -> None:
     settings = Settings.from_environment(
         {
