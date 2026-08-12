@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Publish the rolling edge image or the validated release
+        description: Publish edge only or build and publish a complete release
         required: true
         type: choice
         default: edge
@@ -127,13 +127,15 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'release'
     needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     concurrency:
       group: pr-review-runner-image
       cancel-in-progress: false
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     steps:
       - name: Validate release source
         env:
@@ -143,6 +145,8 @@ jobs:
             echo "Release images must be published from main" >&2
             exit 1
           fi
+      - name: Check out source
+        uses: actions/checkout@v7.0.0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
       - name: Log in to GHCR
@@ -151,25 +155,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Resolve validated edge image
-        id: edge
-        env:
-          VERSION: ${{ needs.test.outputs.version }}
-        run: |
-          edge_version="$(docker run --rm ghcr.io/infinitypacer/pr-review-runner:edge --version)"
-          if [ "${edge_version}" != "${VERSION}" ]; then
-            echo "edge version ${edge_version} does not match local package version ${VERSION}" >&2
-            exit 1
-          fi
-          digest="$(docker buildx imagetools inspect ghcr.io/infinitypacer/pr-review-runner:edge --format '{{json .Manifest.Digest}}' | tr -d '"')"
-          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "Unable to resolve edge image digest" >&2
-            exit 1
-          fi
-          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+      - name: Build release candidate
+        id: build
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/infinitypacer/pr-review-runner:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Protect immutable version tag
         env:
-          SOURCE_DIGEST: ${{ steps.edge.outputs.digest }}
+          SOURCE_DIGEST: ${{ steps.build.outputs.digest }}
           VERSION: ${{ needs.test.outputs.version }}
         run: |
           error_file="$(mktemp)"
@@ -190,33 +188,41 @@ jobs:
             echo "Version ${VERSION} already points to ${existing}; refusing to replace it with ${SOURCE_DIGEST}" >&2
             exit 1
           fi
-      - name: Publish version and latest
+      - name: Publish edge, version, and latest
         env:
-          SOURCE_DIGEST: ${{ steps.edge.outputs.digest }}
+          SOURCE_DIGEST: ${{ steps.build.outputs.digest }}
           VERSION: ${{ needs.test.outputs.version }}
         run: >-
           docker buildx imagetools create
+          --tag ghcr.io/infinitypacer/pr-review-runner:edge
           --tag "ghcr.io/infinitypacer/pr-review-runner:${VERSION}"
           --tag ghcr.io/infinitypacer/pr-review-runner:latest
           "ghcr.io/infinitypacer/pr-review-runner@${SOURCE_DIGEST}"
       - name: Verify release tags
         env:
-          SOURCE_DIGEST: ${{ steps.edge.outputs.digest }}
+          SOURCE_DIGEST: ${{ steps.build.outputs.digest }}
           VERSION: ${{ needs.test.outputs.version }}
         run: |
-          for tag in "${VERSION}" latest; do
+          for tag in edge "${VERSION}" latest; do
             actual="$(docker buildx imagetools inspect "ghcr.io/infinitypacer/pr-review-runner:${tag}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
             if [ "${actual}" != "${SOURCE_DIGEST}" ]; then
               echo "${tag} points to ${actual}, expected ${SOURCE_DIGEST}" >&2
               exit 1
             fi
           done
+      - name: Attest release image provenance
+        uses: actions/attest-build-provenance@v4.1.1
+        with:
+          subject-name: ghcr.io/infinitypacer/pr-review-runner
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
       - name: Summarize release
         env:
-          IMAGE_DIGEST: ${{ steps.edge.outputs.digest }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
           VERSION: ${{ needs.test.outputs.version }}
         run: |
           {
+            echo "Edge: ghcr.io/infinitypacer/pr-review-runner:edge"
             echo "Release: ghcr.io/infinitypacer/pr-review-runner:${VERSION}"
             echo "Latest: ghcr.io/infinitypacer/pr-review-runner:latest"
             echo "Digest: ${IMAGE_DIGEST}"
