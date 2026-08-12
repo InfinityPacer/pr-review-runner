@@ -4,7 +4,7 @@ import pytest
 
 from pr_review_runner.config import Settings
 from pr_review_runner.events import Route
-from pr_review_runner.main import _run_description, _run_review, run
+from pr_review_runner.main import _has_reviewable_files, _run_description, _run_review, run
 
 
 class PullApi:
@@ -210,6 +210,10 @@ def test_review_skips_when_upstream_filters_every_changed_file(monkeypatch, caps
     pull = {"head": {"sha": "abcdef1234567890"}, "changed_files": 2}
 
     class ReviewApi:
+        def get(self, path: str) -> dict:
+            assert path == "repos/owner/repo/pulls/7"
+            return pull
+
         def paginate(self, path: str) -> list[dict]:
             if path.endswith("/issues/7/comments?per_page=100") or path.endswith("/pulls/7/comments?per_page=100"):
                 return []
@@ -218,7 +222,6 @@ def test_review_skips_when_upstream_filters_every_changed_file(monkeypatch, caps
             raise AssertionError(path)
 
     monkeypatch.setattr("pr_review_runner.main.run_upstream", lambda *_: {})
-    monkeypatch.setattr("pr_review_runner.main._has_reviewable_files", lambda files: False)
 
     _run_review(ReviewApi(), settings, Route(7, "/review", False), pull, "en-US")
 
@@ -237,6 +240,10 @@ def test_review_rejects_missing_output_when_a_changed_file_is_reviewable(monkeyp
     pull = {"head": {"sha": "abcdef1234567890"}, "changed_files": 2}
 
     class ReviewApi:
+        def get(self, path: str) -> dict:
+            assert path == "repos/owner/repo/pulls/7"
+            return pull
+
         def paginate(self, path: str) -> list[dict]:
             if path.endswith("/issues/7/comments?per_page=100") or path.endswith("/pulls/7/comments?per_page=100"):
                 return []
@@ -245,10 +252,42 @@ def test_review_rejects_missing_output_when_a_changed_file_is_reviewable(monkeyp
             raise AssertionError(path)
 
     monkeypatch.setattr("pr_review_runner.main.run_upstream", lambda *_: {})
-    monkeypatch.setattr("pr_review_runner.main._has_reviewable_files", lambda files: True)
 
     with pytest.raises(RuntimeError, match="no structured output"):
         _run_review(ReviewApi(), settings, Route(7, "/review", False), pull, "en-US")
+
+
+def test_review_skips_stale_empty_output_before_reading_files(monkeypatch, capsys) -> None:
+    settings = Settings.from_environment(
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_EVENT_NAME": "pull_request_target",
+            "GITHUB_EVENT_PATH": "/tmp/event.json",
+            "GITHUB_TOKEN": "github-token",
+        }
+    )
+    pull = {"head": {"sha": "old-head"}, "changed_files": 1}
+
+    class ReviewApi:
+        def get(self, path: str) -> dict:
+            assert path == "repos/owner/repo/pulls/7"
+            return {"head": {"sha": "new-head"}, "changed_files": 2}
+
+        def paginate(self, path: str) -> list[dict]:
+            if path.endswith("/issues/7/comments?per_page=100") or path.endswith("/pulls/7/comments?per_page=100"):
+                return []
+            raise AssertionError(f"stale review must not read current-head files: {path}")
+
+    monkeypatch.setattr("pr_review_runner.main.run_upstream", lambda *_: {})
+
+    _run_review(ReviewApi(), settings, Route(7, "/review", False), pull, "en-US")
+
+    assert "PR head changed during analysis; skipping stale review publication." in capsys.readouterr().out
+
+
+def test_reviewable_file_filter_matches_bundled_pr_agent() -> None:
+    assert not _has_reviewable_files([{"filename": "Cargo.lock"}, {"filename": "assets/logo.png"}])
+    assert _has_reviewable_files([{"filename": "Cargo.lock"}, {"filename": "src/main.rs"}])
 
 
 def test_description_updates_summary_when_body_and_head_are_unchanged(monkeypatch) -> None:

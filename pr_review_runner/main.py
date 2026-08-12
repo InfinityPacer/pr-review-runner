@@ -71,6 +71,12 @@ def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, la
     outputs = run_upstream("review", settings, model_route, language, discussion)
     review = outputs.get("review")
     changed_files = int(pull.get("changed_files") or 0)
+
+    current = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")
+    if str(current.get("head", {}).get("sha") or "") != reviewed_head:
+        print("PR head changed during analysis; skipping stale review publication.")
+        return
+
     if not isinstance(review, dict):
         if changed_files:
             files = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/files?per_page=100")
@@ -80,10 +86,6 @@ def _run_review(api: GitHubApi, settings: Settings, route: Route, pull: dict, la
             return
         review = {}
 
-    current = api.get(f"repos/{settings.repository}/pulls/{route.pull_number}")
-    if str(current.get("head", {}).get("sha") or "") != reviewed_head:
-        print("PR head changed during analysis; skipping stale review publication.")
-        return
     files = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/files?per_page=100")
     comments = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/comments?per_page=100")
     reviews = api.paginate(f"repos/{settings.repository}/pulls/{route.pull_number}/reviews?per_page=100")
