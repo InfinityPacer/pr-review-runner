@@ -161,8 +161,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: true
-          tags: ghcr.io/infinitypacer/pr-review-runner:sha-${{ github.sha }}
+          outputs: type=image,name=ghcr.io/infinitypacer/pr-review-runner,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Protect immutable version tag
