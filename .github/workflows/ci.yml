@@ -77,8 +77,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
-      attestations: write
     steps:
       - name: Validate edge source
         env:
@@ -108,12 +106,6 @@ jobs:
           tags: ghcr.io/infinitypacer/pr-review-runner:edge
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Attest image provenance
-        uses: actions/attest-build-provenance@v4.1.1
-        with:
-          subject-name: ghcr.io/infinitypacer/pr-review-runner
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
       - name: Summarize edge image
         env:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
@@ -134,8 +126,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
-      attestations: write
     steps:
       - name: Validate release source
         env:
@@ -209,12 +199,6 @@ jobs:
               exit 1
             fi
           done
-      - name: Attest release image provenance
-        uses: actions/attest-build-provenance@v4.1.1
-        with:
-          subject-name: ghcr.io/infinitypacer/pr-review-runner
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
       - name: Summarize release
         env:
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
