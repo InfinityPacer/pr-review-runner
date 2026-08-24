@@ -103,6 +103,7 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
+          provenance: false
           tags: ghcr.io/infinitypacer/pr-review-runner:edge
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -151,6 +152,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
+          provenance: false
           outputs: type=image,name=ghcr.io/infinitypacer/pr-review-runner,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -183,6 +185,7 @@ jobs:
           VERSION: ${{ needs.test.outputs.version }}
         run: >-
           docker buildx imagetools create
+          --prefer-index=false
           --tag ghcr.io/infinitypacer/pr-review-runner:edge
           --tag "ghcr.io/infinitypacer/pr-review-runner:${VERSION}"
           --tag ghcr.io/infinitypacer/pr-review-runner:latest
